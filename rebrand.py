@@ -47,6 +47,16 @@ def run(root):
         if p.name != new_name:
             p.rename(p.with_name(new_name))
             renamed += 1
+    # The third-party update library has a fixed original suite enum. Instead of
+    # referencing its old identity, define this independent app's own release identity.
+    ui = root / "crates/ui-egui/src/lib.rs"
+    ui_src = ui.read_text(encoding="utf-8")
+    expected = "..craft_update::suite::DOCREVISOR"
+    if expected not in ui_src:
+        raise RuntimeError("Update identity initializer changed upstream")
+    ui.write_text(
+        ui_src.replace(expected, '..craft_update::app::App::new("docrevisor", "DocRevisor", "PDF editing", "eftee/DocRevisor")'),
+        encoding="utf-8", newline="")
     missing = [str(p) for p in (root / "apps/docrevisor/Cargo.toml", root / "apps/docrevisor-cli/Cargo.toml") if not p.exists()]
     if missing:
         raise RuntimeError("Renamed app entrypoints not found: " + str(missing))
