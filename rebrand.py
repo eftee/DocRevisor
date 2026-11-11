@@ -24,7 +24,7 @@ def change(s):
         if word.islower():
             return "docrevisor"
         return "DocRevisor"
-    return re.sub(r"pdfcraft", replacement, s, flags=re.IGNORECASE)
+    return re.sub(r"pdfcraft|printcraft", replacement, s, flags=re.IGNORECASE)
 def run(root):
     if not (root / "apps/pdfcraft/Cargo.toml").exists():
         raise RuntimeError("Expected v0.19.0 source tree (not a compiled ZIP)")
@@ -68,7 +68,7 @@ def run(root):
             s = p.read_text(encoding="utf-8")
         except (UnicodeError, OSError):
             continue
-        if "pdfcraft" in s.lower():
+        if "pdfcraft" in s.lower() or "printcraft" in s.lower():
             remains.append(str(p.relative_to(root)))
     if remains:
         raise RuntimeError("Residual source references: " + ", ".join(remains[:30]))
