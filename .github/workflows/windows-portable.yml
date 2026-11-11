@@ -1,0 +1,61 @@
+name: DocRevisor Windows Portable
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  windows-portable:
+    runs-on: windows-2022
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get original open-source release v0.19.0
+        shell: pwsh
+        run: |
+          git clone --depth 1 --branch v0.19.0 --recurse-submodules https://github.com/storytold/pdfcraft.git source
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to fetch original release' }
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Rename source identity to DocRevisor
+        shell: pwsh
+        run: |
+          python rebrand.py source
+          if ($LASTEXITCODE -ne 0) { throw 'Source rebranding failed' }
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Compile Windows desktop app and CLI
+        shell: pwsh
+        working-directory: source
+        env:
+          DOCREVISOR_REQUIRE_WINRES: '1'
+        run: |
+          cargo build --release -p docrevisor -p docrevisor-cli
+          if ($LASTEXITCODE -ne 0) { throw 'Cargo compilation failed' }
+      - name: Assemble portable package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist/DocRevisor | Out-Null
+          Copy-Item source/target/release/docrevisor.exe dist/DocRevisor/DocRevisor.exe
+          Copy-Item source/target/release/docrevisor-cli.exe dist/DocRevisor/DocRevisor-cli.exe
+          New-Item -ItemType File -Path dist/DocRevisor/portable.txt | Out-Null
+          Get-ChildItem source -Filter 'LICENSE*' | Copy-Item -Destination dist/DocRevisor
+          if (Test-Path source/NOTICE) { Copy-Item source/NOTICE dist/DocRevisor }
+          if (Test-Path source/models) { Copy-Item -Recurse source/models dist/DocRevisor/models }
+          Compress-Archive -Path dist/DocRevisor -DestinationPath dist/DocRevisor-0.19.0-windows-x64-portable.zip
+      - name: Check executable identity
+        shell: pwsh
+        run: |
+          $gui = 'dist/DocRevisor/DocRevisor.exe'
+          if (!(Test-Path $gui)) { throw 'GUI executable missing' }
+          $info = (Get-Item $gui).VersionInfo
+          Write-Host "Product name: $($info.ProductName)"
+          if ($info.ProductName -ne 'DocRevisor') { throw "Unexpected product name: $($info.ProductName)" }
+          Get-FileHash $gui -Algorithm SHA256 | Format-List
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DocRevisor-Windows-Portable
+          path: dist/DocRevisor-0.19.0-windows-x64-portable.zip
+          if-no-files-found: error
