@@ -3,6 +3,7 @@
 from __future__ import annotations
 import argparse
 import os
+import re
 from pathlib import Path
 
 SKIP = {".git", "target", ".github", "node_modules"}
@@ -16,9 +17,14 @@ def walk(root):
         for filename in files:
             yield Path(parent) / filename
 def change(s):
-    for old, new in NAMES:
-        s = s.replace(old, new)
-    return s
+    def replacement(m):
+        word = m.group(0)
+        if word.isupper():
+            return "DOCREVISOR"
+        if word.islower():
+            return "docrevisor"
+        return "DocRevisor"
+    return re.sub(r"pdfcraft", replacement, s, flags=re.IGNORECASE)
 def run(root):
     if not (root / "apps/pdfcraft/Cargo.toml").exists():
         raise RuntimeError("Expected v0.19.0 source tree (not a compiled ZIP)")
