@@ -32,6 +32,9 @@ def main(root):
     path=icon/'hicolor/256x256/apps/ai.storyteller.docrevisor.png'
     path.parent.mkdir(parents=True,exist_ok=True)
     path.write_bytes(png(256))
+    icon_128=icon/'hicolor/128x128/apps/ai.storyteller.docrevisor.png'
+    icon_128.parent.mkdir(parents=True,exist_ok=True)
+    icon_128.write_bytes(png(128))
     sizes=[16,32,48,256]
     chunks=[png(n) for n in sizes]
     head=struct.pack('<HHH',0,1,len(sizes))
