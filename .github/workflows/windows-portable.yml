@@ -3,6 +3,9 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+concurrency:
+  group: docrevisor-build-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -24,6 +27,11 @@ jobs:
         run: |
           python rebrand.py source
           if ($LASTEXITCODE -ne 0) { throw 'Source rebranding failed' }
+      - name: Generate custom application icons
+        shell: pwsh
+        run: |
+          python qa/icons.py source
+          if ($LASTEXITCODE -ne 0) { throw 'Icon generation failed' }
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
       - name: Compile Windows desktop app and CLI
@@ -34,16 +42,29 @@ jobs:
         run: |
           cargo build --release -p docrevisor -p docrevisor-cli
           if ($LASTEXITCODE -ne 0) { throw 'Cargo compilation failed' }
-      - name: Assemble portable package
+      - name: PDF regression smoke tests
         shell: pwsh
         run: |
+          python qa/smoke.py source/target/release/docrevisor-cli.exe
+          if ($LASTEXITCODE -ne 0) { throw 'PDF regression tests failed' }
+      - name: Assemble portable package with OCR and licenses
+        shell: pwsh
+        run: |
+          $url = 'https://github.com/storytold/pdfcraft/releases/download/v0.19.0/pdfcraft-0.19.0-windows-x64-portable.zip'
+          Invoke-WebRequest -Uri $url -OutFile 'upstream.zip'
+          Expand-Archive -Path 'upstream.zip' -DestinationPath 'upstream' -Force
+          $original = Get-ChildItem upstream -Directory | Select-Object -First 1
+          if (!$original) { throw 'Original portable distribution missing' }
           New-Item -ItemType Directory -Force dist/DocRevisor | Out-Null
           Copy-Item source/target/release/docrevisor.exe dist/DocRevisor/DocRevisor.exe
           Copy-Item source/target/release/docrevisor-cli.exe dist/DocRevisor/DocRevisor-cli.exe
-          New-Item -ItemType File -Path dist/DocRevisor/portable.txt | Out-Null
-          Get-ChildItem source -Filter 'LICENSE*' | Copy-Item -Destination dist/DocRevisor
-          if (Test-Path source/NOTICE) { Copy-Item source/NOTICE dist/DocRevisor }
-          if (Test-Path source/models) { Copy-Item -Recurse source/models dist/DocRevisor/models }
+          foreach ($item in Get-ChildItem $original.FullName) {
+            if ($item.Name -in @('pdfcraft.exe','pdfcraft-cli.exe','README.md','portable.txt')) { continue }
+            Copy-Item -Path $item.FullName -Destination 'dist/DocRevisor' -Recurse -Force
+          }
+          Set-Content -Path dist/DocRevisor/portable.txt -Value 'DocRevisor portable mode' -Encoding ascii
+          Set-Content -Path dist/DocRevisor/README.md -Value 'DocRevisor 0.19.0 - independent derivative of storytold/pdfcraft. Original notices and licenses are included. This app is unsigned.' -Encoding utf8
+          if (!(Test-Path dist/DocRevisor/models/text-recognition.onnx)) { throw 'OCR models missing' }
           Compress-Archive -Path dist/DocRevisor -DestinationPath dist/DocRevisor-0.19.0-windows-x64-portable.zip
       - name: Check executable identity
         shell: pwsh
