@@ -32,6 +32,17 @@ jobs:
         run: |
           python qa/icons.py source
           if ($LASTEXITCODE -ne 0) { throw 'Icon generation failed' }
+      - name: Fetch the matching translation and font assets
+        shell: pwsh
+        run: |
+          git clone https://github.com/storytold/craft-i18n.git i18n
+          git -C i18n checkout 575cfdef63227b14daf173b8cc87928bfdfa325e
+          git clone https://github.com/storytold/craft-fonts.git fonts
+          git -C fonts checkout b076417b5880bd4154bd22f00695b1d28c6bea83
+          git -C fonts lfs pull
+          if ($LASTEXITCODE -ne 0) { throw 'Font checkout failed' }
+          python qa/rebrand_catalogs.py i18n
+          if ($LASTEXITCODE -ne 0) { throw 'Localization migration failed' }
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
       - name: Compile Windows desktop app and CLI
@@ -39,9 +50,22 @@ jobs:
         working-directory: source
         env:
           DOCREVISOR_REQUIRE_WINRES: '1'
+          CRAFT_FONTS_DIR: ${{ github.workspace }}/fonts
+          CRAFT_FONTS_REQUIRED: '1'
+          CRAFT_I18N_DIR: ${{ github.workspace }}/i18n
+          CRAFT_I18N_REQUIRED: '1'
         run: |
           cargo build --release -p docrevisor -p docrevisor-cli
           if ($LASTEXITCODE -ne 0) { throw 'Cargo compilation failed' }
+      - name: Rust engine regression tests
+        shell: pwsh
+        working-directory: source
+        env:
+          CRAFT_FONTS_DIR: ${{ github.workspace }}/fonts
+          CRAFT_I18N_DIR: ${{ github.workspace }}/i18n
+        run: |
+          cargo test --release -p docrevisor-engine --lib
+          if ($LASTEXITCODE -ne 0) { throw 'Rust engine unit tests failed' }
       - name: PDF regression smoke tests
         shell: pwsh
         run: |
