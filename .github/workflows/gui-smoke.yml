@@ -1,0 +1,50 @@
+name: DocRevisor GUI smoke test
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/gui-smoke.yml'
+permissions:
+  actions: read
+  contents: read
+jobs:
+  gui-smoke:
+    runs-on: windows-2022
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: DocRevisor-Windows-Portable
+          run-id: 43075694385
+          github-token: ${{ github.token }}
+          path: artifact
+      - name: Extract full Windows portable build
+        shell: pwsh
+        run: |
+          $zip = (Get-ChildItem 'artifact' -Filter '*.zip' | Select-Object -First 1).FullName
+          if (!$zip) { throw 'Missing portable ZIP inside artifact' }
+          Expand-Archive $zip -DestinationPath app -Force
+          if (!(Test-Path app/DocRevisor/DocRevisor.exe)) { throw 'Missing application executable' }
+      - name: Open application on Windows desktop
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path 'app/DocRevisor/DocRevisor.exe').Path
+          $p = Start-Process -FilePath $exe -ArgumentList '--new-window','--theme','system' -PassThru
+          try {
+            Start-Sleep -Seconds 12
+            $p.Refresh()
+            if ($p.HasExited) { throw "GUI exited unexpectedly: $($p.ExitCode)" }
+            Write-Host "GUI process still running: PID=$($p.Id); MainWindowHandle=$($p.MainWindowHandle)"
+            if ($p.MainWindowHandle -eq 0) { Write-Warning 'No visible main window handle; desktop rendering not verified' }
+          } finally {
+            if (!$p.HasExited) { Stop-Process -Id $p.Id -Force }
+          }
+      - name: Record result
+        shell: pwsh
+        run: |
+          "GUI process launch and 12-second stability check passed on Windows." | Out-File gui-smoke-result.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DocRevisor-GUI-Smoke-Result
+          path: gui-smoke-result.txt
